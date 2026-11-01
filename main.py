@@ -14,15 +14,14 @@ class Node:
         self.balanced_weight = 0
 
 def parse_input(uwg_file):
-    f = open(uwg_file)
+    f = uwg_file if hasattr(uwg_file, "readline") else open(uwg_file)
 
     vertices = []
     number_of_vertices = int(f.readline())
     for i in range(1,int(number_of_vertices)+1):
         vertices.append(i)
 
-     # We just use the upper right triangle of the matrix. [rows][cols]
-    adjancancy_matrix = [[float('inf') for _ in range(number_of_vertices)] for _ in range(number_of_vertices)] 
+    adjancancy_matrix = [[None for _ in range(number_of_vertices)] for _ in range(number_of_vertices)]
    
 
     number_of_edges = int(f.readline())
@@ -35,33 +34,63 @@ def parse_input(uwg_file):
 
     rest_of_file = f.read()
     lines = rest_of_file.splitlines()
+    if len(lines) != number_of_edges:
+        raise NotValidInputError(
+            "Not valid input: The number of edge lines must equal the number of edges specified"
+        )
+
     counter = 0
 
-    # While end of file is not reached loop through the edges
     for line in lines:
         counter += 1
 
-        if counter > number_of_edges:
-            raise NotValidInputError("Not valid input: The number of edges in the file is less than the number of edges specified")
+        elements = line.split()
+        if len(elements) != 3:
+            raise NotValidInputError(
+                "Not valid input: Each edge line must contain exactly three values"
+            )
 
-        elements = line.split() # split based on blank space
+        try:
+            first_endpoint = int(elements[0])
+            second_endpoint = int(elements[1])
+            edge_weight = int(elements[2])
+        except ValueError:
+            raise NotValidInputError(
+                "Not valid input: Edge endpoints and weight must be integers"
+            )
 
-        if int(elements[0]) > number_of_vertices or int(elements[1]) > number_of_vertices:
-            raise NotValidInputError("Not valid input: Edges cannot be connected to a higher vertex number than there are verteces")
+        if not (1 <= first_endpoint <= number_of_vertices) or not (
+            1 <= second_endpoint <= number_of_vertices):
+            raise NotValidInputError(
+                "Not valid input: Edge endpoints must be between 1 and the number of vertices"
+            )
 
-        if int(elements[2]) > int(big_M):
+        if first_endpoint == second_endpoint:
+            raise NotValidInputError(
+                "Not valid input: An edge cannot connect a vertex to itself"
+            )
+
+        if edge_weight > int(big_M):
             raise NotValidInputError("Not valid input: An edge cannot have higher weight than M")
+        
+        elif edge_weight < 0:
+                    raise NotValidInputError("Not valid input: An edge cannot be negative")
 
-        adjancancy_matrix[int(elements[0])-1][int(elements[1])-1] = int(elements[2])
+        first_vertex = first_endpoint - 1
+        second_vertex = second_endpoint - 1
 
-    # print("Number of vertices: ", number_of_vertices)
-    # print("Number of edges: ", number_of_edges)
-    # print("Big M: ", big_M)
-    # print("Vertices: ", vertices)
-    # print("Adjacancy matrix: ", adjancancy_matrix)
+        if adjancancy_matrix[first_vertex][second_vertex] is not None:
+            raise NotValidInputError(
+                "Not valid input: An edge between these vertices is already present"
+            )
+
+        edge = (counter, edge_weight)
+        adjancancy_matrix[first_vertex][second_vertex] = edge
+        adjancancy_matrix[second_vertex][first_vertex] = edge
+
     return adjancancy_matrix, vertices, big_M
 
-def make_tree(adjancancy_matrix, vertices):
+def make_tree(adjancancy_matrix, vertices, big_M):
     nodes = [Node(vertex) for vertex in vertices]
 
     for i in range(len(adjancancy_matrix)):
@@ -69,21 +98,17 @@ def make_tree(adjancancy_matrix, vertices):
             if i == j:
                 continue
 
-            if adjancancy_matrix[i][j] != float('inf'):
-                nodes[i].children.append(nodes[j])
+            edge = adjancancy_matrix[i][j]
+            if edge is not None:
+                edge_index, edge_weight = edge
+                nodes[i].children.append((nodes[j], edge_index, edge_weight))
+
+        nodes[i].children.sort(key=lambda edge: abs(edge[2] - big_M // 2))
 
     return nodes[0]
 
-def print_tree(root):
-    if root is None:
-        return
-    #print(root.number)
-    for child in root.children:
-        print_tree(child)
-
 def run_modified_DFS(root, adjancancy_matrix, vertices, current_path, big_M, B_min, path,
                      current_weight_sum, current_weight_complementary_sum, visited=None):
-    #print("Visiting node: ", root.number)
 
     if visited is None:
         visited = set()
@@ -93,78 +118,47 @@ def run_modified_DFS(root, adjancancy_matrix, vertices, current_path, big_M, B_m
         if max(current_weight_sum, current_weight_complementary_sum) < B_min:
             B_min = max(current_weight_sum, current_weight_complementary_sum)
             path = current_path.copy()
-            #print("New best path found: ", path)
-            #print("New best B: ", B_min)
         return path, B_min
 
 
-    for child in root.children:
+    for child, edge_index, edge_weight in root.children:
         if child.number in visited:
             continue
 
-        edge_weight = adjancancy_matrix[root.number - 1][child.number - 1]
-        if edge_weight == float('inf'):
-            edge_weight = adjancancy_matrix[child.number - 1][root.number - 1]
-        edge_weight_balanced = abs(edge_weight - round(big_M/2))
-        child.balanced_weight = edge_weight_balanced
-
-    root.children.sort(key=lambda x: x.balanced_weight)
-    #print("Children sorted by balanced edge weights: ", [child.number for child in root.children])
-    
-    for child in root.children:
-        if child.number in visited:
-            continue
-
-        edge_weight = adjancancy_matrix[root.number - 1][child.number - 1]
-        if edge_weight == float('inf'):
-            edge_weight = adjancancy_matrix[child.number - 1][root.number - 1]
         new_weight_sum = current_weight_sum + edge_weight
         new_weight_complementary_sum = (big_M - edge_weight) + current_weight_complementary_sum
         new_b = max(new_weight_sum, new_weight_complementary_sum)
 
         if new_b < B_min:
-            current_path.append(child.number)
-            #print("Current path: ", current_path)
-            #print("Current B: ", new_b)
+            current_path.append(edge_index)
             visited.add(child.number)
-            path, B_min = run_modified_DFS(child, adjancancy_matrix, vertices, current_path, big_M, B_min, path, new_weight_sum, new_weight_complementary_sum)
+            path, B_min = run_modified_DFS(child, adjancancy_matrix, vertices, current_path, big_M, B_min, path, new_weight_sum, new_weight_complementary_sum,visited)
             visited.remove(child.number)
             current_path.pop()
 
     return path, B_min
 
 def print_path(path, b_min):
-    if not path:
+    if not path and b_min == float('inf'):
         print("NO")
         return
     
-    for edge_weight in path:
-        print(edge_weight)
+    for edge_id in path:
+        print(edge_id)
     print(b_min)
 
 def main():
-    uwg_files = ["test01.uwg", "test02.uwg", "test03.uwg", "test04.uwg", "test05.uwg",
-                 "test06.uwg", "test07.uwg", "test08.uwg", "test09.uwg", "test10.uwg",
-                 "test11.uwg", "test12.uwg", "test13.uwg", "test14.uwg"
-                 ]
-    for uwg_file in uwg_files:
-        uwg_file = uwg_file
-        try:
-            adjancancy_matrix, vertices, big_M = parse_input(uwg_file)
-        except NotValidInputError as e:
-            print(e.message)
-            sys.exit(1)
+    try:
+        adjancancy_matrix, vertices, big_M = parse_input(sys.stdin)
+    except NotValidInputError as e:
+        print(e.message)
+        sys.exit(1)
 
-        #print("Parsing completed successfully.")
-
-        root = make_tree(adjancancy_matrix, vertices)
-        #print("Printing tree:")
-        #print_tree(root)
-
-        path, b_min = run_modified_DFS(root, adjancancy_matrix, vertices, [], round(big_M), float('inf'), [], 0, 0)
-
-        print_path(path, b_min)
-        print("--------------------------------------------------")
+    root = make_tree(adjancancy_matrix, vertices, big_M)
+    path, b_min = run_modified_DFS(
+        root, adjancancy_matrix, vertices, [], big_M, float('inf'), [], 0, 0
+    )
+    print_path(path, b_min)
 
 if __name__ == "__main__":
     main()
