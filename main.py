@@ -69,6 +69,12 @@ def print_tree(root):
     for child in root.children:
         print_tree(child)
 
+def run_modified_DFS(root, adjancancy_matrix, vertices, big_M):
+    pass
+
+def print_path(path, big_B):
+    pass
+
 def main():
     uwg_file = "test01.uwg"
     try:
@@ -82,6 +88,10 @@ def main():
     root = make_tree(adjancancy_matrix, vertices)
     print("Printing tree:")
     print_tree(root)
+
+    path, big_B = run_modified_DFS(root, adjancancy_matrix, vertices, big_M)
+
+    print_path(path, big_B)
 
 if __name__ == "__main__":
     main()
