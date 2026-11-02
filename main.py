@@ -107,11 +107,46 @@ def make_tree(adjancancy_matrix, vertices, big_M):
 
     return nodes[0]
 
+def shortest_remaining_distances(adjancancy_matrix, target, complementary_weight=None):
+    distances = [float("inf")] * len(adjancancy_matrix)
+    distances[target] = 0
+    queue = [(0, target)]
+
+    while queue:
+        distance, vertex = min(queue)
+        queue.remove((distance, vertex))
+        if distance != distances[vertex]:
+            continue
+
+        for neighbour, edge in enumerate(adjancancy_matrix[vertex]):
+            if edge is None:
+                continue
+
+            _, edge_weight = edge
+            if complementary_weight is not None:
+                edge_weight = complementary_weight - edge_weight
+            new_distance = distance + edge_weight
+
+            if new_distance < distances[neighbour]:
+                distances[neighbour] = new_distance
+                queue.append((new_distance, neighbour))
+
+    return distances
+
 def run_modified_DFS(root, adjancancy_matrix, vertices, current_path, big_M, B_min, path,
-                     current_weight_sum, current_weight_complementary_sum, visited=None):
+                     current_weight_sum, current_weight_complementary_sum, visited=None,
+                     remaining_weights=None, remaining_complementary_weights=None):
 
     if visited is None:
         visited = set()
+    if remaining_weights is None:
+        target = len(vertices) - 1
+        remaining_weights = shortest_remaining_distances(adjancancy_matrix, target)
+    if remaining_complementary_weights is None:
+        target = len(vertices) - 1
+        remaining_complementary_weights = shortest_remaining_distances(
+            adjancancy_matrix, target, big_M
+        )
     visited.add(root.number)
 
     if root.number == len(vertices):
@@ -127,12 +162,19 @@ def run_modified_DFS(root, adjancancy_matrix, vertices, current_path, big_M, B_m
 
         new_weight_sum = current_weight_sum + edge_weight
         new_weight_complementary_sum = (big_M - edge_weight) + current_weight_complementary_sum
-        new_b = max(new_weight_sum, new_weight_complementary_sum)
+        lower_bound = max(
+            new_weight_sum + remaining_weights[child.number - 1],
+            new_weight_complementary_sum + remaining_complementary_weights[child.number - 1],
+        )
 
-        if new_b < B_min:
+        if lower_bound < B_min:
             current_path.append(edge_index)
             visited.add(child.number)
-            path, B_min = run_modified_DFS(child, adjancancy_matrix, vertices, current_path, big_M, B_min, path, new_weight_sum, new_weight_complementary_sum,visited)
+            path, B_min = run_modified_DFS(
+                child, adjancancy_matrix, vertices, current_path, big_M, B_min, path,
+                new_weight_sum, new_weight_complementary_sum, visited,
+                remaining_weights, remaining_complementary_weights
+            )
             visited.remove(child.number)
             current_path.pop()
 
@@ -155,8 +197,15 @@ def main():
         sys.exit(1)
 
     root = make_tree(adjancancy_matrix, vertices, big_M)
+    target = len(vertices) - 1
+    remaining_weights = shortest_remaining_distances(adjancancy_matrix, target)
+    remaining_complementary_weights = shortest_remaining_distances(
+        adjancancy_matrix, target, big_M
+    )
     path, b_min = run_modified_DFS(
-        root, adjancancy_matrix, vertices, [], big_M, float('inf'), [], 0, 0
+        root, adjancancy_matrix, vertices, [], big_M, float('inf'), [], 0, 0,
+        remaining_weights=remaining_weights,
+        remaining_complementary_weights=remaining_complementary_weights,
     )
     print_path(path, b_min)
 
